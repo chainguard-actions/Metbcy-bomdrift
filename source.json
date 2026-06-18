@@ -1,0 +1,11 @@
+{
+  "owner": "Metbcy",
+  "repo": "bomdrift",
+  "version": "0.9.7-alpha",
+  "commit_sha": "60e328609761f18a5ef8c70358733d7dd1afc26b",
+  "url": "https://github.com/Metbcy/bomdrift",
+  "policy_sha": "d636be7e43ef829af6e853da6b3c7566db9f72fe",
+  "test_policy_sha": "843adf9e4b8f85d0c08b27b9d0b09dd094b54702",
+  "test_agent_version": "1",
+  "harden_agent_version": "1"
+}
