@@ -16,7 +16,7 @@ Action **Metbcy--bomdrift--comment-suppress/v0.9.9** was hardened automatically.
 
 ### unpinned-uses (severity: high)
 
-The composite action step uses `sigstore/cosign-installer@v3`, which is a mutable tag reference rather than a pinned 40-character SHA commit hash. This means the action could silently change if the tag is moved, enabling a supply-chain attack.
+The composite action step uses `sigstore/cosign-installer@v3`, which is pinned to a mutable version tag (`@v3`) rather than an immutable 40-character commit SHA. A tag can be moved to point to a different (potentially malicious) commit at any time, making this a supply-chain risk.
 
 Locations:
 
@@ -24,7 +24,7 @@ Locations:
 
 ### script-injection (severity: high)
 
-Rule (a) violation: A `${{ }}` expression is interpolated directly inside a `run:` shell command string. The step at line 52 uses `run: ${{ github.action_path }}/entrypoint.sh`, which embeds the `github.action_path` context value directly into the shell command before the shell ever sees it. Any `${{ ... }}` expression in a `run:` block is a script-injection risk because the value is substituted by the YAML template engine before shell quoting applies. The safe alternative is to use the `$GITHUB_ACTION_PATH` environment variable instead: `run: "$GITHUB_ACTION_PATH/entrypoint.sh"`.
+Sub-rule (a): The `run:` block directly interpolates the GitHub Actions expression `${{ github.action_path }}` inside the shell command string: `run: ${{ github.action_path }}/entrypoint.sh`. Any `${{ ... }}` expression embedded directly in a `run:` block is subject to template substitution before the shell sees it, bypassing shell quoting. This should be replaced with the pre-set environment variable `$GITHUB_ACTION_PATH` instead.
 
 Locations:
 
@@ -38,5 +38,5 @@ Locations:
 
 **Notes:**
 
-1. Pinned sigstore/cosign-installer@v3 to full commit SHA 398d4b0eeef1380460a10c8013a76f728fb906ac (tag preserved as comment). 2. Replaced `${{ github.action_path }}/entrypoint.sh` in the run: block with `"$GITHUB_ACTION_PATH/entrypoint.sh"` to use the safe built-in environment variable instead of a template expression subject to script injection.
+1. Pinned sigstore/cosign-installer@v3 to full commit SHA 398d4b0eeef1380460a10c8013a76f728fb906ac (tag preserved as comment). 2. Replaced ${{ github.action_path }} in the run: block with the pre-set environment variable $GITHUB_ACTION_PATH to eliminate template injection risk.
 

@@ -1,0 +1,19 @@
+name: Test custom baseline-path input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        env:
+          GITHUB_EVENT_NAME: push
+        with:
+          baseline-path: '.security/bomdrift-baseline.json'
+          verify-signatures: 'false'
+      - name: Assert action exited cleanly with custom baseline-path
+        run: |
+          echo "Action completed without error using custom baseline-path (.security/bomdrift-baseline.json)"
+          echo "PASS"

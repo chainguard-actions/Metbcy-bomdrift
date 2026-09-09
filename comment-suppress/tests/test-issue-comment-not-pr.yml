@@ -1,0 +1,39 @@
+name: Test issue comment (not a PR)
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Create fake issue_comment event payload (plain issue, not PR)
+        run: |
+          mkdir -p /tmp/fake-events
+          cat > /tmp/fake-events/issue-comment-not-pr.json <<'EOF'
+          {
+            "action": "created",
+            "issue": {
+              "number": 42,
+              "pull_request": null
+            },
+            "comment": {
+              "id": 123456,
+              "body": "/bomdrift suppress GHSA-1234-5678-9abc",
+              "user": {
+                "login": "testuser",
+                "type": "User"
+              }
+            }
+          }
+          EOF
+      - id: action
+        uses: .
+        env:
+          GITHUB_EVENT_NAME: issue_comment
+          GITHUB_EVENT_PATH: /tmp/fake-events/issue-comment-not-pr.json
+        with:
+          verify-signatures: 'false'
+      - name: Assert action exited cleanly for non-PR comment
+        run: |
+          echo "Action completed without error for a comment on a plain issue (not a PR)"
+          echo "PASS"
