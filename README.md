@@ -9,7 +9,7 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 | Version | Tag | Upstream commit |
 |---------|-----|-----------------|
 | 0.9.7-alpha | [`0.9.7-alpha`](https://github.com/chainguard-actions/Metbcy-bomdrift/tree/0.9.7-alpha) | [`60e3286`](https://github.com/Metbcy/bomdrift/commit/60e328609761f18a5ef8c70358733d7dd1afc26b) |
-| v0.9.9 | [`v0.9.9`](https://github.com/chainguard-actions/Metbcy-bomdrift/tree/v0.9.9) | — |
+| v0.9.9 | [`v0.9.9`](https://github.com/chainguard-actions/Metbcy-bomdrift/tree/v0.9.9) | [`4575833`](https://github.com/Metbcy/bomdrift/commit/45758335e65bdc3bd80ed628133618fe6c773dca) |
 
 ## Privacy
 
