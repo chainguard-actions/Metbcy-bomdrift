@@ -291,7 +291,7 @@ runs:
     # nor the disk usage.
     - name: Checkout after-ref (PR head, default)
       if: inputs.after-sbom == ''
-      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4
       with:
         ref: ${{ inputs.after-ref }}
         path: __bomdrift_after
@@ -299,7 +299,7 @@ runs:
         persist-credentials: false
     - name: Checkout before-ref (PR base, default)
       if: inputs.before-sbom == ''
-      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4
       with:
         ref: ${{ inputs.before-ref }}
         path: __bomdrift_before
@@ -311,10 +311,10 @@ runs:
     # would lose those for no real gain.
     - name: Install Syft (for in-action SBOM generation)
       if: inputs.before-sbom == '' || inputs.after-sbom == ''
-      uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
+      uses: chainguard-actions/anchore-sbom-action/download-syft@f26b93287efafa8b3ffa0ae62eead21c63f58e35 # v0
     - name: Install cosign (for release signature verification)
       if: inputs.verify-signatures == 'true'
-      uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      uses: chainguard-actions/sigstore-cosign-installer@4b87fb11ae8e101b1d73261d3c5f2e16e97e6200 # v3
     - name: Run bomdrift
       shell: bash
       run: "$GITHUB_ACTION_PATH/entrypoint.sh"
@@ -371,7 +371,7 @@ runs:
     # would 422 from the GitHub API.
     - name: Upload SARIF to Code Scanning
       if: inputs.upload-to-code-scanning == 'true' && inputs.output == 'sarif'
-      uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+      uses: chainguard-actions/github-codeql-action/upload-sarif@02c8b1fece55d94b9fc8de711efd251dad82618c # v3
       with:
         sarif_file: ${{ github.workspace }}/bomdrift.sarif
         category: bomdrift
