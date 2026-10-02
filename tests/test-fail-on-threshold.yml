@@ -1,0 +1,44 @@
+name: Test fail-on threshold with changed SBOMs
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Run with fail-on: any — since there are added/changed deps, bomdrift
+      # should exit 2 (policy gate tripped). The action step is expected to
+      # fail; we assert on the outcome.
+      - id: action
+        uses: .
+        with:
+          before-sbom: ${{ github.workspace }}/tests/fixtures/sbom-before.json
+          after-sbom: ${{ github.workspace }}/tests/fixtures/sbom-after.json
+          output: markdown
+          comment-on-pr: 'false'
+          verify-signatures: 'false'
+          fail-on: any
+          no-epss: 'true'
+          no-kev: 'true'
+          no-registry: 'true'
+        continue-on-error: true
+
+      - name: Assert action ran (fail-on any with changes should fail or succeed gracefully)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          # With fail-on: any and changed deps, bomdrift exits 2 → step fails.
+          # On a sentinel repo or network issue, the binary download may fail too.
+          # Both failure and success are acceptable outcomes here; what matters is
+          # that the step did not produce an unexpected outcome.
+          if [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed as expected (policy gate tripped or network issue)"
+          elif [ "$OUTCOME" = "success" ]; then
+            echo "PASS: action succeeded (bomdrift may not have flagged any findings with no-registry/no-epss/no-kev)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

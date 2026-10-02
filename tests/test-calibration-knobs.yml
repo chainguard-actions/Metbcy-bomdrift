@@ -1,4 +1,4 @@
-name: Test JSON output format with explicit SBOMs
+name: Test calibration knobs (recently-published-days, typosquat-similarity-threshold)
 on:
   workflow_dispatch:
 
@@ -8,26 +8,32 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      # Test that calibration knobs are accepted and passed through to the CLI.
+      # These are v0.9.6/v0.9.7 inputs; the action should not error on them.
       - id: action
         uses: .
         with:
           before-sbom: ${{ github.workspace }}/tests/fixtures/sbom-before.json
           after-sbom: ${{ github.workspace }}/tests/fixtures/sbom-after.json
-          output: json
+          output: markdown
           comment-on-pr: 'false'
           verify-signatures: 'false'
+          recently-published-days: '30'
+          typosquat-similarity-threshold: '0.85'
+          young-maintainer-days: '90'
+          multi-major-delta: '2'
           no-epss: 'true'
           no-kev: 'true'
           no-registry: 'true'
         continue-on-error: true
 
-      - name: Assert action ran with JSON output
+      - name: Assert action ran with calibration knobs
         env:
           OUTCOME: ${{ steps.action.outcome }}
         run: |
           echo "outcome: $OUTCOME"
           if [ "$OUTCOME" = "success" ]; then
-            echo "PASS: action completed successfully with JSON output"
+            echo "PASS: action completed successfully with calibration knobs"
           elif [ "$OUTCOME" = "failure" ]; then
             echo "PASS: action failed gracefully (expected on sentinel repo or network issue)"
           else

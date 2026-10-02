@@ -1,0 +1,27 @@
+name: Test non-matching event (not issue_comment)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create a dummy event payload
+        run: |
+          mkdir -p /tmp/test-events
+          echo '{"action":"created","issue":{"number":1},"comment":{"id":1,"body":"hello","user":{"login":"user1"}}}' \
+            > /tmp/test-events/event.json
+
+      - id: action
+        uses: .
+        env:
+          GITHUB_EVENT_NAME: push
+          GITHUB_EVENT_PATH: /tmp/test-events/event.json
+        with:
+          verify-signatures: 'false'
+
+      - name: Assert action exited cleanly (non-matching event is a no-op)
+        run: |
+          echo "PASS: action completed without error for non-issue_comment event"

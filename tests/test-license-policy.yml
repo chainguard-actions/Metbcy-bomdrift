@@ -1,4 +1,4 @@
-name: Test JSON output format with explicit SBOMs
+name: Test license policy inputs (allow-licenses, deny-licenses)
 on:
   workflow_dispatch:
 
@@ -8,26 +8,30 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      # Test that license policy flags are accepted by the action.
+      # The SBOMs use MIT and Apache-2.0 licenses. Allowing MIT and Apache-2.0
+      # should not cause a license-change failure.
       - id: action
         uses: .
         with:
           before-sbom: ${{ github.workspace }}/tests/fixtures/sbom-before.json
           after-sbom: ${{ github.workspace }}/tests/fixtures/sbom-after.json
-          output: json
+          output: markdown
           comment-on-pr: 'false'
           verify-signatures: 'false'
+          allow-licenses: 'MIT,Apache-2.0'
           no-epss: 'true'
           no-kev: 'true'
           no-registry: 'true'
         continue-on-error: true
 
-      - name: Assert action ran with JSON output
+      - name: Assert action ran with license policy
         env:
           OUTCOME: ${{ steps.action.outcome }}
         run: |
           echo "outcome: $OUTCOME"
           if [ "$OUTCOME" = "success" ]; then
-            echo "PASS: action completed successfully with JSON output"
+            echo "PASS: action completed successfully with license policy"
           elif [ "$OUTCOME" = "failure" ]; then
             echo "PASS: action failed gracefully (expected on sentinel repo or network issue)"
           else

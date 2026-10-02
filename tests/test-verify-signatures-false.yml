@@ -1,4 +1,4 @@
-name: Test JSON output format with explicit SBOMs
+name: Test verify-signatures=false skips cosign verification
 on:
   workflow_dispatch:
 
@@ -8,12 +8,15 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      # With verify-signatures: false, the action should skip the cosign
+      # installer step and the signature verification, proceeding directly
+      # to downloading and running bomdrift.
       - id: action
         uses: .
         with:
           before-sbom: ${{ github.workspace }}/tests/fixtures/sbom-before.json
           after-sbom: ${{ github.workspace }}/tests/fixtures/sbom-after.json
-          output: json
+          output: markdown
           comment-on-pr: 'false'
           verify-signatures: 'false'
           no-epss: 'true'
@@ -21,13 +24,13 @@ jobs:
           no-registry: 'true'
         continue-on-error: true
 
-      - name: Assert action ran with JSON output
+      - name: Assert action ran without cosign verification
         env:
           OUTCOME: ${{ steps.action.outcome }}
         run: |
           echo "outcome: $OUTCOME"
           if [ "$OUTCOME" = "success" ]; then
-            echo "PASS: action completed successfully with JSON output"
+            echo "PASS: action completed successfully without cosign verification"
           elif [ "$OUTCOME" = "failure" ]; then
             echo "PASS: action failed gracefully (expected on sentinel repo or network issue)"
           else

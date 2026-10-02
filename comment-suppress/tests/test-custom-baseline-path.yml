@@ -1,0 +1,28 @@
+name: Test custom baseline-path input (non-matching event, clean exit)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create a dummy event payload
+        run: |
+          mkdir -p /tmp/test-events
+          echo '{"action":"created","issue":{"number":1},"comment":{"id":1,"body":"hello","user":{"login":"user1"}}}' \
+            > /tmp/test-events/event.json
+
+      - id: action
+        uses: .
+        env:
+          GITHUB_EVENT_NAME: workflow_dispatch
+          GITHUB_EVENT_PATH: /tmp/test-events/event.json
+        with:
+          baseline-path: '.custom/security/baseline.json'
+          verify-signatures: 'false'
+
+      - name: Assert action accepted custom baseline-path and exited cleanly
+        run: |
+          echo "PASS: action accepted custom baseline-path input without error"

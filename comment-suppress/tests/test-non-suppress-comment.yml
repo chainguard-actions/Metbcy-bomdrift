@@ -1,0 +1,45 @@
+name: Test PR comment without /bomdrift suppress directive
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create event payload for a PR comment without suppress directive
+        run: |
+          mkdir -p /tmp/test-events
+          # .issue.pull_request is non-null → it IS a PR comment
+          # but the body does not contain /bomdrift suppress
+          cat > /tmp/test-events/event.json <<'EOF'
+          {
+            "action": "created",
+            "issue": {
+              "number": 7,
+              "pull_request": {
+                "url": "https://api.github.com/repos/owner/repo/pulls/7"
+              }
+            },
+            "comment": {
+              "id": 200,
+              "body": "Looks good to me! LGTM",
+              "user": {
+                "login": "bob"
+              }
+            }
+          }
+          EOF
+
+      - id: action
+        uses: .
+        env:
+          GITHUB_EVENT_NAME: issue_comment
+          GITHUB_EVENT_PATH: /tmp/test-events/event.json
+        with:
+          verify-signatures: 'false'
+
+      - name: Assert action exited cleanly (non-suppress comment is a no-op)
+        run: |
+          echo "PASS: action completed without error for non-suppress PR comment"

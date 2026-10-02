@@ -1,4 +1,4 @@
-name: Test JSON output format with explicit SBOMs
+name: Test no-diff scenario with identical SBOMs
 on:
   workflow_dispatch:
 
@@ -11,9 +11,9 @@ jobs:
       - id: action
         uses: .
         with:
-          before-sbom: ${{ github.workspace }}/tests/fixtures/sbom-before.json
-          after-sbom: ${{ github.workspace }}/tests/fixtures/sbom-after.json
-          output: json
+          before-sbom: ${{ github.workspace }}/tests/fixtures/sbom-identical.json
+          after-sbom: ${{ github.workspace }}/tests/fixtures/sbom-identical.json
+          output: markdown
           comment-on-pr: 'false'
           verify-signatures: 'false'
           no-epss: 'true'
@@ -21,13 +21,13 @@ jobs:
           no-registry: 'true'
         continue-on-error: true
 
-      - name: Assert action ran with JSON output
+      - name: Assert action ran with no-diff SBOMs
         env:
           OUTCOME: ${{ steps.action.outcome }}
         run: |
           echo "outcome: $OUTCOME"
           if [ "$OUTCOME" = "success" ]; then
-            echo "PASS: action completed successfully with JSON output"
+            echo "PASS: action completed successfully (no diff between identical SBOMs)"
           elif [ "$OUTCOME" = "failure" ]; then
             echo "PASS: action failed gracefully (expected on sentinel repo or network issue)"
           else

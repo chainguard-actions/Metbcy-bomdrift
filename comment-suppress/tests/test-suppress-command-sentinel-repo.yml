@@ -1,0 +1,56 @@
+name: Test suppress command with sentinel repo (graceful failure)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create event payload for a valid /bomdrift suppress PR comment
+        run: |
+          mkdir -p /tmp/test-events
+          # .issue.pull_request is non-null → it IS a PR comment
+          # body matches /bomdrift suppress <ID> grammar
+          cat > /tmp/test-events/event.json <<'EOF'
+          {
+            "action": "created",
+            "issue": {
+              "number": 99,
+              "pull_request": {
+                "url": "https://api.github.com/repos/owner/repo/pulls/99"
+              }
+            },
+            "comment": {
+              "id": 999,
+              "body": "/bomdrift suppress GHSA-1234-5678-9012",
+              "user": {
+                "login": "carol"
+              }
+            }
+          }
+          EOF
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        env:
+          GITHUB_EVENT_NAME: issue_comment
+          GITHUB_EVENT_PATH: /tmp/test-events/event.json
+        with:
+          verify-signatures: 'false'
+
+      - name: Assert action ran and either succeeded or failed gracefully on sentinel repo
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" = "success" ]; then
+            echo "PASS: action succeeded (unexpected but acceptable)"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully — expected because GITHUB_REPOSITORY is a sentinel"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

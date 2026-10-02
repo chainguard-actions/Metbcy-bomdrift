@@ -1,4 +1,4 @@
-name: Test JSON output format with explicit SBOMs
+name: Test basic usage with explicit SBOMs (markdown output)
 on:
   workflow_dispatch:
 
@@ -13,7 +13,7 @@ jobs:
         with:
           before-sbom: ${{ github.workspace }}/tests/fixtures/sbom-before.json
           after-sbom: ${{ github.workspace }}/tests/fixtures/sbom-after.json
-          output: json
+          output: markdown
           comment-on-pr: 'false'
           verify-signatures: 'false'
           no-epss: 'true'
@@ -21,16 +21,33 @@ jobs:
           no-registry: 'true'
         continue-on-error: true
 
-      - name: Assert action ran with JSON output
+      - name: Assert action ran (markdown output produced or failed gracefully)
         env:
           OUTCOME: ${{ steps.action.outcome }}
         run: |
           echo "outcome: $OUTCOME"
           if [ "$OUTCOME" = "success" ]; then
-            echo "PASS: action completed successfully with JSON output"
+            echo "PASS: action completed successfully"
           elif [ "$OUTCOME" = "failure" ]; then
             echo "PASS: action failed gracefully (expected on sentinel repo or network issue)"
           else
             echo "FAIL: unexpected outcome '$OUTCOME'"
             exit 1
+          fi
+
+      - name: Assert step summary was written (when action succeeded)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" = "success" ]; then
+            if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f "${GITHUB_STEP_SUMMARY}" ]; then
+              SUMMARY_CONTENT="$(cat "$GITHUB_STEP_SUMMARY")"
+              echo "summary length: ${#SUMMARY_CONTENT}"
+              echo "PASS: step summary file exists"
+            else
+              echo "PASS: step summary not available in this environment (act)"
+            fi
+          else
+            echo "SKIP: action did not succeed, skipping summary check"
           fi

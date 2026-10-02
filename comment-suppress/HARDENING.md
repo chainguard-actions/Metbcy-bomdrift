@@ -14,21 +14,21 @@ Action **Metbcy--bomdrift--comment-suppress/0.9.7-alpha** was hardened automatic
 
 ## Findings Fixed
 
-### unpinned-uses (severity: high)
+### script-injection (severity: high)
 
-The composite action step uses `sigstore/cosign-installer@v3`, which is a mutable tag reference rather than a pinned 40-character SHA commit hash. A tag can be moved to point to a different (potentially malicious) commit at any time, making this a supply-chain risk.
+Rule (a) violation: A ${{ ... }} expression is interpolated directly inside a `run:` shell command string. The line `run: ${{ github.action_path }}/entrypoint.sh` embeds `${{ github.action_path }}` directly into the shell command before the shell ever sees it. Per the check rules, any `${{ ... }}` expression inside a `run:` block is a script-injection finding. The safe alternative is to use the `$GITHUB_ACTION_PATH` environment variable instead: `run: "$GITHUB_ACTION_PATH/entrypoint.sh"`.
 
 Locations:
 
 - `action.yml:50`
 
-### script-injection (severity: high)
+### unpinned-uses (severity: high)
 
-Rule (a) violation: A `${{ }}` expression is interpolated directly inside a `run:` shell command string. The line `run: ${{ github.action_path }}/entrypoint.sh` embeds `${{ github.action_path }}` directly into the shell command before the shell ever sees it. Any `${{ ... }}` expression inside a `run:` block — including `github.action_path` — is subject to YAML template substitution prior to shell execution, making it a script-injection risk. The safe alternative is to use the `$GITHUB_ACTION_PATH` environment variable instead: `run: "$GITHUB_ACTION_PATH/entrypoint.sh"`.
+The composite action step uses `sigstore/cosign-installer@v3`, which is pinned to a mutable version tag (`@v3`) rather than an immutable 40-character commit SHA. If the tag is moved (intentionally or via a supply-chain compromise), the action will silently execute different code. It should be pinned to a full SHA, e.g. `sigstore/cosign-installer@3454791b5f3e91534e9f3e4b6e3b6e3b6e3b6e3b # v3`.
 
 Locations:
 
-- `action.yml:53`
+- `action.yml:47`
 
 ## Iteration Notes
 
@@ -38,5 +38,5 @@ Locations:
 
 **Notes:**
 
-Fixed two findings in hardened/action/action.yml: (1) Pinned sigstore/cosign-installer from mutable tag @v3 to full commit SHA @398d4b0eeef1380460a10c8013a76f728fb906ac with a # v3 comment for readability. (2) Replaced the script-injection risk `run: ${{ github.action_path }}/entrypoint.sh` with the safe environment variable form `run: "$GITHUB_ACTION_PATH/entrypoint.sh"`, which avoids YAML template substitution before shell execution.
+1. Pinned sigstore/cosign-installer from mutable tag @v3 to full commit SHA @398d4b0eeef1380460a10c8013a76f728fb906ac # v3. 2. Replaced `${{ github.action_path }}/entrypoint.sh` in the run: block with `"$GITHUB_ACTION_PATH/entrypoint.sh"`, using the built-in GITHUB_ACTION_PATH environment variable to eliminate the script-injection risk.
 

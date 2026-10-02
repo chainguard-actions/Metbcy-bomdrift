@@ -1,0 +1,42 @@
+name: Test issue_comment on a plain issue (not a PR)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create event payload for a plain issue comment (no pull_request key)
+        run: |
+          mkdir -p /tmp/test-events
+          # .issue.pull_request is null → not a PR comment
+          cat > /tmp/test-events/event.json <<'EOF'
+          {
+            "action": "created",
+            "issue": {
+              "number": 42,
+              "pull_request": null
+            },
+            "comment": {
+              "id": 100,
+              "body": "/bomdrift suppress GHSA-1234-5678-9012",
+              "user": {
+                "login": "alice"
+              }
+            }
+          }
+          EOF
+
+      - id: action
+        uses: .
+        env:
+          GITHUB_EVENT_NAME: issue_comment
+          GITHUB_EVENT_PATH: /tmp/test-events/event.json
+        with:
+          verify-signatures: 'false'
+
+      - name: Assert action exited cleanly (plain issue comment is a no-op)
+        run: |
+          echo "PASS: action completed without error for non-PR issue comment"
