@@ -16,30 +16,44 @@ Action **Metbcy--bomdrift/0.9.7-alpha** was hardened automatically. 2 finding(s)
 
 ### unpinned-uses (severity: high)
 
-Multiple `uses:` references in action.yml and comment-suppress/action.yml are pinned to mutable tag refs instead of immutable 40-character commit SHAs, making the action vulnerable to supply-chain attacks if those tags are moved. Failing references:
-- action.yml: `uses: actions/checkout@v4` (×2)
-- action.yml: `uses: anchore/sbom-action/download-syft@v0`
-- action.yml: `uses: sigstore/cosign-installer@v3`
-- action.yml: `uses: github/codeql-action/upload-sarif@v3`
-- comment-suppress/action.yml: `uses: sigstore/cosign-installer@v3`
+Multiple `uses:` references in action.yml and comment-suppress/action.yml are pinned to mutable tags rather than immutable 40-character commit SHAs, making the action vulnerable to supply-chain attacks if any of those upstream actions are compromised or their tags are moved.
+
+Failing references in action.yml:
+- `uses: actions/checkout@v4` (appears twice)
+- `uses: anchore/sbom-action/download-syft@v0`
+- `uses: sigstore/cosign-installer@v3`
+- `uses: github/codeql-action/upload-sarif@v3`
+
+Failing references in comment-suppress/action.yml:
+- `uses: sigstore/cosign-installer@v3`
+
+All should be pinned to full SHA digests, e.g. `uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4`.
 
 Locations:
 
-- `action.yml:244`
-- `action.yml:252`
-- `action.yml:260`
-- `action.yml:264`
-- `action.yml:310`
-- `comment-suppress/action.yml:47`
+- `action.yml:285`
+- `action.yml:293`
+- `action.yml:301`
+- `action.yml:305`
+- `action.yml:363`
+- `comment-suppress/action.yml:53`
 
 ### script-injection (severity: high)
 
-Sub-rule (a): A `${{ ... }}` expression is interpolated directly inside a `run:` shell command string. Both composite action steps use `run: ${{ github.action_path }}/entrypoint.sh`. Although `github.action_path` is GitHub-controlled, any `${{ ... }}` expression directly in a `run:` block undergoes YAML template substitution before the shell processes it, making it a script-injection risk. The safe alternative is to reference the path via the `$GITHUB_ACTION_PATH` environment variable instead.
+Sub-rule (a): A `${{ ... }}` expression is interpolated directly inside a `run:` shell command string in both action.yml and comment-suppress/action.yml.
+
+Offending lines:
+- `run: ${{ github.action_path }}/entrypoint.sh`
+
+Although `github.action_path` is set by the runner and is not directly attacker-controlled, the check rules require that NO `${{ ... }}` expression appear anywhere inside a `run:` shell command string. The value flows through YAML template substitution before the shell processes it. The safe alternative is to use the equivalent environment variable `$GITHUB_ACTION_PATH` which is always set by the runner:
+```yaml
+run: "$GITHUB_ACTION_PATH/entrypoint.sh"
+```
 
 Locations:
 
-- `action.yml:267`
-- `comment-suppress/action.yml:50`
+- `action.yml:309`
+- `comment-suppress/action.yml:55`
 
 ## Iteration Notes
 
@@ -49,5 +63,5 @@ Locations:
 
 **Notes:**
 
-Fixed all 6 unpinned `uses:` references by resolving them to full 40-character commit SHAs via lookup_action_sha (keeping tag comments for readability). Fixed both script-injection instances by replacing `${{ github.action_path }}/entrypoint.sh` with `$GITHUB_ACTION_PATH/entrypoint.sh` in both action.yml and comment-suppress/action.yml.
+Fixed all 6 unpinned `uses:` references by resolving each tag to its full 40-character commit SHA using lookup_action_sha. Fixed both script-injection findings by replacing `${{ github.action_path }}/entrypoint.sh` with `$GITHUB_ACTION_PATH/entrypoint.sh` in both action.yml and comment-suppress/action.yml.
 
