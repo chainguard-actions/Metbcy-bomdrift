@@ -1,0 +1,30 @@
+name: Test BYO SBOM diff with terminal output
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_EVENT_NAME: push
+      GITHUB_REF: refs/heads/main
+      GITHUB_ACTION_REF: v0.9.9
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        with:
+          before-sbom: ${{ github.workspace }}/tests/fixtures/before.cdx.json
+          after-sbom: ${{ github.workspace }}/tests/fixtures/after.cdx.json
+          format: cdx
+          output: terminal
+          comment-on-pr: 'false'
+          verify-signatures: 'false'
+          no-epss: 'true'
+          no-kev: 'true'
+          no-registry: 'true'
+
+      - name: Assert action completed successfully with terminal output
+        run: |
+          echo "Action completed with terminal output without error"
+          echo "PASS"

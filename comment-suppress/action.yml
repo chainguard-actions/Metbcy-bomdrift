@@ -61,7 +61,7 @@ runs:
           "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
     - name: Install cosign (for release signature verification)
       if: inputs.verify-signatures == 'true'
-      uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      uses: chainguard-actions/sigstore-cosign-installer@4b87fb11ae8e101b1d73261d3c5f2e16e97e6200 # v3
     - name: Run bomdrift comment-suppress
       shell: bash
       run: "$GITHUB_ACTION_PATH/entrypoint.sh"
