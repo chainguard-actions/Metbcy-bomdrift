@@ -14,54 +14,35 @@ Action **Metbcy--bomdrift/0.9.7-alpha** was hardened automatically. 2 finding(s)
 
 ## Findings Fixed
 
-### unpinned-uses (severity: high)
-
-Multiple `uses:` references in action.yml and comment-suppress/action.yml are pinned to mutable tags rather than immutable 40-character commit SHAs, making the action vulnerable to supply-chain attacks if any of those upstream actions are compromised or their tags are moved.
-
-Failing references in action.yml:
-- `uses: actions/checkout@v4` (appears twice)
-- `uses: anchore/sbom-action/download-syft@v0`
-- `uses: sigstore/cosign-installer@v3`
-- `uses: github/codeql-action/upload-sarif@v3`
-
-Failing references in comment-suppress/action.yml:
-- `uses: sigstore/cosign-installer@v3`
-
-All should be pinned to full SHA digests, e.g. `uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4`.
-
-Locations:
-
-- `action.yml:285`
-- `action.yml:293`
-- `action.yml:301`
-- `action.yml:305`
-- `action.yml:363`
-- `comment-suppress/action.yml:53`
-
 ### script-injection (severity: high)
 
-Sub-rule (a): A `${{ ... }}` expression is interpolated directly inside a `run:` shell command string in both action.yml and comment-suppress/action.yml.
-
-Offending lines:
-- `run: ${{ github.action_path }}/entrypoint.sh`
-
-Although `github.action_path` is set by the runner and is not directly attacker-controlled, the check rules require that NO `${{ ... }}` expression appear anywhere inside a `run:` shell command string. The value flows through YAML template substitution before the shell processes it. The safe alternative is to use the equivalent environment variable `$GITHUB_ACTION_PATH` which is always set by the runner:
-```yaml
-run: "$GITHUB_ACTION_PATH/entrypoint.sh"
-```
+Sub-rule (a): A ${{ }} expression is directly interpolated inside a run: shell command string. In action.yml, the step 'Run bomdrift' uses `run: ${{ github.action_path }}/entrypoint.sh` — the github.action_path context is substituted directly into the shell command before the shell parses it. While github.action_path is not attacker-controlled in the same way as github.head_ref, any ${{ ... }} expression inside a run: block is a script-injection finding per the check rules. The same pattern appears in comment-suppress/action.yml for the 'Run bomdrift comment-suppress' step.
 
 Locations:
 
-- `action.yml:309`
-- `comment-suppress/action.yml:55`
+- `action.yml:243`
+- `comment-suppress/action.yml:47`
+
+### unpinned-uses (severity: high)
+
+Multiple uses: references in action.yml and comment-suppress/action.yml are pinned to mutable tags rather than full 40-character commit SHAs, making them vulnerable to supply-chain attacks if the referenced tags are moved or compromised. Failing references in action.yml: `actions/checkout@v4`, `actions/checkout@v4` (second checkout step), `anchore/sbom-action/download-syft@v0`, `sigstore/cosign-installer@v3`, `github/codeql-action/upload-sarif@v3`. Failing reference in comment-suppress/action.yml: `sigstore/cosign-installer@v3`.
+
+Locations:
+
+- `action.yml:233`
+- `action.yml:240`
+- `action.yml:247`
+- `action.yml:252`
+- `action.yml:310`
+- `comment-suppress/action.yml:44`
 
 ## Iteration Notes
 
 ### Iteration 1
 
-**Fixes applied:** unpinned-uses, script-injection
+**Fixes applied:** script-injection, unpinned-uses
 
 **Notes:**
 
-Fixed all 6 unpinned `uses:` references by resolving each tag to its full 40-character commit SHA using lookup_action_sha. Fixed both script-injection findings by replacing `${{ github.action_path }}/entrypoint.sh` with `$GITHUB_ACTION_PATH/entrypoint.sh` in both action.yml and comment-suppress/action.yml.
+Fixed script-injection in action.yml and comment-suppress/action.yml by moving `${{ github.action_path }}` out of run: commands into env: blocks as ACTION_PATH, then referencing via $ACTION_PATH in the shell. Pinned all 6 unpinned uses references to full commit SHAs: actions/checkout@v4→11d5960a3, anchore/sbom-action/download-syft@v0→e22c389904, sigstore/cosign-installer@v3→398d4b0eee (both files), github/codeql-action/upload-sarif@v3→ce5e7eeac3. Original tag names preserved as inline comments.
 

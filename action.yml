@@ -317,8 +317,9 @@ runs:
       uses: chainguard-actions/sigstore-cosign-installer@4b87fb11ae8e101b1d73261d3c5f2e16e97e6200 # v3
     - name: Run bomdrift
       shell: bash
-      run: "$GITHUB_ACTION_PATH/entrypoint.sh"
+      run: "$ACTION_PATH/entrypoint.sh"
       env:
+        ACTION_PATH: ${{ github.action_path }}
         BEFORE_SBOM: ${{ inputs.before-sbom }}
         AFTER_SBOM: ${{ inputs.after-sbom }}
         BEFORE_REF: ${{ inputs.before-ref }}
@@ -371,7 +372,7 @@ runs:
     # would 422 from the GitHub API.
     - name: Upload SARIF to Code Scanning
       if: inputs.upload-to-code-scanning == 'true' && inputs.output == 'sarif'
-      uses: github/codeql-action/upload-sarif@9f759ee644a3e7c15c1390abf49868036c00067b # v3
+      uses: github/codeql-action/upload-sarif@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3
       with:
         sarif_file: ${{ github.workspace }}/bomdrift.sarif
         category: bomdrift
