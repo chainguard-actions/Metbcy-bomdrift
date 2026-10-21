@@ -10,31 +10,45 @@
 
 **Harden Agent Version:** `2`
 
-Action **Metbcy--bomdrift/v0.9.9** was hardened automatically. 2 finding(s) were identified and resolved across 1 iteration(s).
+Action **Metbcy--bomdrift/v0.9.9** was hardened automatically. 4 finding(s) were identified and resolved across 1 iteration(s).
 
 ## Findings Fixed
 
 ### unpinned-uses (severity: high)
 
-Multiple `uses:` references in action.yml and comment-suppress/action.yml are pinned to mutable version tags instead of immutable 40-character SHA digests. This exposes the action to supply-chain attacks if any of the referenced actions are compromised or their tags are moved. Failing references: `actions/checkout@v4` (×2), `anchore/sbom-action/download-syft@v0`, `sigstore/cosign-installer@v3`, `github/codeql-action/upload-sarif@v3` in action.yml; `sigstore/cosign-installer@v3` in comment-suppress/action.yml.
+action.yml references actions by mutable tags instead of 40-char commit SHAs: `uses: actions/checkout@v4` (twice), `uses: anchore/sbom-action/download-syft@v0`, `uses: sigstore/cosign-installer@v3`, `uses: github/codeql-action/upload-sarif@v3`.
 
 Locations:
 
-- `action.yml:244`
-- `action.yml:251`
-- `action.yml:258`
-- `action.yml:262`
-- `action.yml:310`
-- `comment-suppress/action.yml:47`
+- `action.yml:299`
+- `action.yml:308`
+- `action.yml:321`
+- `action.yml:325`
+- `action.yml:384`
+
+### unpinned-uses (severity: high)
+
+comment-suppress/action.yml references `uses: sigstore/cosign-installer@v3` by a mutable tag instead of a 40-char commit SHA.
+
+Locations:
+
+- `comment-suppress/action.yml:50`
 
 ### script-injection (severity: high)
 
-Sub-rule (a) violation: `${{ github.action_path }}` is interpolated directly inside a `run:` shell command string in both action.yml and comment-suppress/action.yml. The offending lines are `run: ${{ github.action_path }}/entrypoint.sh`. Although `github.action_path` is not attacker-controlled in the same way as `github.head_ref`, any `${{ ... }}` expression directly inside a `run:` block undergoes YAML template substitution before the shell ever sees it, making it a script-injection finding per the check rules. The safe alternative is to use the `$GITHUB_ACTION_PATH` environment variable instead.
+Sub-rule (a): a GitHub Actions expression is placed directly inside a run: block in the 'Run bomdrift' step: `run: ${{ github.action_path }}/entrypoint.sh`. Pass it through an env var instead, e.g. `run: "$GITHUB_ACTION_PATH/entrypoint.sh"`.
 
 Locations:
 
-- `action.yml:265`
-- `comment-suppress/action.yml:50`
+- `action.yml:329`
+
+### script-injection (severity: high)
+
+Sub-rule (a): a GitHub Actions expression is placed directly inside a run: block in the 'Run bomdrift comment-suppress' step: `run: ${{ github.action_path }}/entrypoint.sh`. Use `"$GITHUB_ACTION_PATH/entrypoint.sh"` instead.
+
+Locations:
+
+- `comment-suppress/action.yml:53`
 
 ## Iteration Notes
 
@@ -44,5 +58,5 @@ Locations:
 
 **Notes:**
 
-Fixed all 6 unpinned `uses:` references by pinning to full 40-character SHA digests with original tags preserved as comments: actions/checkout@v4 (×2) → SHA 11d5960a..., anchore/sbom-action/download-syft@v0 → SHA e22c3899..., sigstore/cosign-installer@v3 (×2, in action.yml and comment-suppress/action.yml) → SHA 398d4b0e..., github/codeql-action/upload-sarif@v3 → SHA ce5e7eea.... Fixed both script-injection occurrences by replacing `${{ github.action_path }}/entrypoint.sh` with `$GITHUB_ACTION_PATH/entrypoint.sh` in action.yml and comment-suppress/action.yml.
+Pinned actions/checkout to 11d5960a… (v4, both uses), anchore/sbom-action/download-syft to e22c3899… (v0), sigstore/cosign-installer to 398d4b0e… (v3, in both action.yml and comment-suppress/action.yml), and github/codeql-action/upload-sarif to 4bfa242a… (v3). Each pin keeps its tag as a trailing comment. In both manifests, `run: ${{ github.action_path }}/entrypoint.sh` is now `run: '"$GITHUB_ACTION_PATH/entrypoint.sh"'` (shell: bash). I left the description text that mentions upload-sarif@v3 as it was.
 
