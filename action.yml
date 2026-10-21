@@ -3,12 +3,14 @@ description: 'SBOM diff for GitHub PRs: flags new CVEs, typosquats, major jumps,
 branding:
   icon: shield
   color: blue
+
 inputs:
   # ---- Zero-config inputs (v0.5+) -------------------------------------------
   #
   # Defaults populate from the `pull_request` event payload. On other event
   # types (push, workflow_dispatch, schedule), supply both refs explicitly
   # OR fall back to the deprecated `before-sbom`/`after-sbom` inputs.
+
   before-ref:
     description: |
       Git ref / SHA to check out as the "before" side of the diff. On a
@@ -27,6 +29,7 @@ inputs:
       the repository root. Useful for monorepos where dependencies live
       under a workspace path (e.g. `path: services/api`).
     default: '.'
+
   # ---- Explicit-SBOM inputs (v0.4-compat, deprecated) -----------------------
   #
   # When set, bypass the in-action SBOM generation entirely and use the
@@ -34,6 +37,7 @@ inputs:
   # callers should prefer the zero-config flow above; these inputs remain
   # documented as the "I generate SBOMs in a non-Syft toolchain" escape
   # hatch and won't be removed in the v1 lifetime.
+
   before-sbom:
     description: |
       Path to the "before" SBOM (CycloneDX, SPDX, or Syft JSON). When set,
@@ -45,7 +49,9 @@ inputs:
     description: |
       Path to the "after" SBOM. Same migration story as `before-sbom`.
     default: ''
+
   # ---- Behavior knobs (unchanged) -------------------------------------------
+
   format:
     description: Force input format detection (auto|cdx|spdx|syft).
     default: auto
@@ -128,7 +134,9 @@ inputs:
       behavior change. See
       https://metbcy.github.io/bomdrift/sarif.html for wiring details.
     default: 'false'
+
   # ---- VEX (v0.9.7+ action surface; CLI shipped in v0.9) --------------------
+
   vex:
     description: |
       Path(s) to OpenVEX documents to consume when rendering the diff.
@@ -150,7 +158,9 @@ inputs:
       OpenVEX `not_affected` justification ID to apply by default. Maps
       to `--vex-default-justification <id>`.
     default: ''
+
   # ---- License policy (v0.9.7+ action surface; CLI shipped in v0.7-v0.9) ----
+
   allow-licenses:
     description: |
       Comma-separated SPDX expressions to allow. Maps to
@@ -179,7 +189,9 @@ inputs:
       Treat license expressions that bomdrift cannot resolve as allowed
       (default: deny). Maps to `--allow-ambiguous-licenses`.
     default: 'false'
+
   # ---- Enrichment toggles (v0.9.7+ action surface) --------------------------
+
   no-epss:
     description: |
       Disable EPSS exploit-likelihood enrichment. Maps to `--no-epss`.
@@ -194,13 +206,17 @@ inputs:
       Disable registry / maintainer-age enrichment (no network calls to
       the package registries). Maps to `--no-registry`.
     default: 'false'
+
   # ---- Failure thresholds (v0.9.7+ action surface) --------------------------
+
   fail-on-epss:
     description: |
       Exit 2 when any new advisory has an EPSS score at or above this
       threshold (0.0–1.0). Maps to `--fail-on-epss <FLOAT>`.
     default: ''
+
   # ---- Calibration knobs (v0.9.6 CLI; v0.9.7 action surface) ----------------
+
   recently-published-days:
     description: |
       Window (days) for the "recently published" maintainer-age signal.
@@ -228,7 +244,9 @@ inputs:
       flags an upgrade as multi-major (default 2; minimum 1). Maps to
       `--multi-major-delta <N>`. Introduced in v0.9.7.
     default: ''
+
   # ---- OCI attestation (v0.9.6 CLI; v0.9.7 action surface) ------------------
+
   before-attestation:
     description: |
       OCI reference for the cosign attestation covering the "before"
@@ -255,13 +273,16 @@ inputs:
       Fail the diff when either side is missing a verified attestation.
       Maps to `--require-attestation`.
     default: 'false'
+
   # ---- Plugins (v0.9.6 CLI; v0.9.7 action surface) --------------------------
+
   plugin:
     description: |
       Path(s) to bomdrift plugin manifests (`plugin.toml`). One path per
       line; each is passed as a repeated `--plugin <path>` flag. See
       https://metbcy.github.io/bomdrift/plugins.html.
     default: ''
+
 runs:
   using: composite
   steps:
@@ -289,6 +310,7 @@ runs:
     # steps are skipped when the corresponding `*-sbom` input is set, so
     # v0.4 advanced consumers (BYO SBOMs) pay neither the network round-trip
     # nor the disk usage.
+
     - name: Checkout after-ref (PR head, default)
       if: inputs.after-sbom == ''
       uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4
@@ -297,6 +319,7 @@ runs:
         path: __bomdrift_after
         fetch-depth: 1
         persist-credentials: false
+
     - name: Checkout before-ref (PR base, default)
       if: inputs.before-sbom == ''
       uses: chainguard-actions/actions-checkout@31bbccf724702f8a0dc7a3ed7db8fcca2066babc # v4
@@ -305,6 +328,7 @@ runs:
         path: __bomdrift_before
         fetch-depth: 1
         persist-credentials: false
+
     # Syft is only installed when at least one side needs in-action SBOM
     # generation. anchore/sbom-action's published `download-syft` sub-action
     # handles arch detection + tool-cache reuse — re-implementing it inline
@@ -312,14 +336,15 @@ runs:
     - name: Install Syft (for in-action SBOM generation)
       if: inputs.before-sbom == '' || inputs.after-sbom == ''
       uses: chainguard-actions/anchore-sbom-action/download-syft@f26b93287efafa8b3ffa0ae62eead21c63f58e35 # v0
+
     - name: Install cosign (for release signature verification)
       if: inputs.verify-signatures == 'true'
       uses: chainguard-actions/sigstore-cosign-installer@4b87fb11ae8e101b1d73261d3c5f2e16e97e6200 # v3
+
     - name: Run bomdrift
       shell: bash
-      run: "$ACTION_PATH/entrypoint.sh"
+      run: '"$GITHUB_ACTION_PATH/entrypoint.sh"'
       env:
-        ACTION_PATH: ${{ github.action_path }}
         BEFORE_SBOM: ${{ inputs.before-sbom }}
         AFTER_SBOM: ${{ inputs.after-sbom }}
         BEFORE_REF: ${{ inputs.before-ref }}
@@ -366,13 +391,14 @@ runs:
         INPUT_COSIGN_ISSUER: ${{ inputs.cosign-issuer }}
         INPUT_REQUIRE_ATTESTATION: ${{ inputs.require-attestation }}
         INPUT_PLUGIN: ${{ inputs.plugin }}
+
     # Code Scanning upload is opt-in. Requires the calling workflow to grant
     # `permissions.security-events: write`. We only run when the user
     # explicitly asked for SARIF AND opted in — uploading any other format
     # would 422 from the GitHub API.
     - name: Upload SARIF to Code Scanning
       if: inputs.upload-to-code-scanning == 'true' && inputs.output == 'sarif'
-      uses: github/codeql-action/upload-sarif@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3
+      uses: github/codeql-action/upload-sarif@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
       with:
         sarif_file: ${{ github.workspace }}/bomdrift.sarif
         category: bomdrift

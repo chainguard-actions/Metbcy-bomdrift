@@ -10,39 +10,52 @@
 
 **Harden Agent Version:** `2`
 
-Action **Metbcy--bomdrift/0.9.7-alpha** was hardened automatically. 2 finding(s) were identified and resolved across 1 iteration(s).
+Action **Metbcy--bomdrift/0.9.7-alpha** was hardened automatically. 4 finding(s) were identified and resolved across 1 iteration(s).
 
 ## Findings Fixed
 
-### script-injection (severity: high)
+### unpinned-uses (severity: high)
 
-Sub-rule (a): A ${{ }} expression is directly interpolated inside a run: shell command string. In action.yml, the step 'Run bomdrift' uses `run: ${{ github.action_path }}/entrypoint.sh` — the github.action_path context is substituted directly into the shell command before the shell parses it. While github.action_path is not attacker-controlled in the same way as github.head_ref, any ${{ ... }} expression inside a run: block is a script-injection finding per the check rules. The same pattern appears in comment-suppress/action.yml for the 'Run bomdrift comment-suppress' step.
+Composite action steps reference actions by mutable tags rather than full commit SHAs: `uses: actions/checkout@v4` (twice), `uses: anchore/sbom-action/download-syft@v0`, `uses: sigstore/cosign-installer@v3`, `uses: github/codeql-action/upload-sarif@v3`.
 
 Locations:
 
-- `action.yml:243`
-- `comment-suppress/action.yml:47`
+- `action.yml:295`
+- `action.yml:304`
+- `action.yml:317`
+- `action.yml:321`
 
 ### unpinned-uses (severity: high)
 
-Multiple uses: references in action.yml and comment-suppress/action.yml are pinned to mutable tags rather than full 40-character commit SHAs, making them vulnerable to supply-chain attacks if the referenced tags are moved or compromised. Failing references in action.yml: `actions/checkout@v4`, `actions/checkout@v4` (second checkout step), `anchore/sbom-action/download-syft@v0`, `sigstore/cosign-installer@v3`, `github/codeql-action/upload-sarif@v3`. Failing reference in comment-suppress/action.yml: `sigstore/cosign-installer@v3`.
+The comment-suppress sub-action references an action by a mutable tag rather than a full commit SHA: `uses: sigstore/cosign-installer@v3`.
 
 Locations:
 
-- `action.yml:233`
-- `action.yml:240`
-- `action.yml:247`
-- `action.yml:252`
-- `action.yml:310`
-- `comment-suppress/action.yml:44`
+- `comment-suppress/action.yml:48`
+
+### script-injection (severity: high)
+
+Sub-rule (a): a GitHub expression is placed directly inside a run: script: `run: ${{ github.action_path }}/entrypoint.sh`. Use the env var instead, e.g. `run: "$GITHUB_ACTION_PATH/entrypoint.sh"`.
+
+Locations:
+
+- `action.yml:325`
+
+### script-injection (severity: high)
+
+Sub-rule (a): a GitHub expression is placed directly inside a run: script: `run: ${{ github.action_path }}/entrypoint.sh`. Use `"$GITHUB_ACTION_PATH/entrypoint.sh"` instead.
+
+Locations:
+
+- `comment-suppress/action.yml:51`
 
 ## Iteration Notes
 
 ### Iteration 1
 
-**Fixes applied:** script-injection, unpinned-uses
+**Fixes applied:** unpinned-uses, script-injection
 
 **Notes:**
 
-Fixed script-injection in action.yml and comment-suppress/action.yml by moving `${{ github.action_path }}` out of run: commands into env: blocks as ACTION_PATH, then referencing via $ACTION_PATH in the shell. Pinned all 6 unpinned uses references to full commit SHAs: actions/checkout@v4→11d5960a3, anchore/sbom-action/download-syft@v0→e22c389904, sigstore/cosign-installer@v3→398d4b0eee (both files), github/codeql-action/upload-sarif@v3→ce5e7eeac3. Original tag names preserved as inline comments.
+Pinned actions/checkout (x2), anchore/sbom-action/download-syft, sigstore/cosign-installer (in both manifests) and github/codeql-action/upload-sarif to full commit SHAs, keeping the tag as a comment after each one. In action.yml and comment-suppress/action.yml, changed `run: ${{ github.action_path }}/entrypoint.sh` to `run: '"$GITHUB_ACTION_PATH/entrypoint.sh"'` (both steps use shell: bash). Running the edits in parallel damaged action.yml: the 'Run bomdrift' step header was lost and the SARIF step's name and if: lines were merged together. I repaired both and checked the file. Nothing was run to test the changes.
 
