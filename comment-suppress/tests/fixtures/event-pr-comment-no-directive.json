@@ -1,0 +1,13 @@
+{
+  "action": "created",
+  "issue": {
+    "number": 8,
+    "title": "Some PR",
+    "pull_request": { "url": "https://api.github.com/repos/example/example/pulls/8" }
+  },
+  "comment": {
+    "id": 654321,
+    "body": "Looks good to me, thanks!",
+    "user": { "login": "octocat" }
+  }
+}

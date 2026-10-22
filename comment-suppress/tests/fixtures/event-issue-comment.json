@@ -1,0 +1,12 @@
+{
+  "action": "created",
+  "issue": {
+    "number": 7,
+    "title": "Plain issue"
+  },
+  "comment": {
+    "id": 123456,
+    "body": "/bomdrift suppress GHSA-xxxx-yyyy-zzzz",
+    "user": { "login": "octocat" }
+  }
+}

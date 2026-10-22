@@ -1,0 +1,68 @@
+name: Test explicit SBOMs with SARIF output
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Remove stale SARIF
+        run: rm -f "$GITHUB_WORKSPACE/bomdrift.sarif"
+      - name: Detect whether the prebuilt bomdrift binary can run here
+        id: env
+        run: |
+          # Released bomdrift linux-gnu binaries require glibc >= 2.39.
+          v="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}')"
+          [ -z "$v" ] && v="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$')"
+          echo "host glibc: $v"
+          if [ -n "$v" ] && [ "$(printf '%s\n2.39\n' "$v" | sort -V | head -1)" = "2.39" ]; then
+            echo "runnable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "runnable=false" >> "$GITHUB_OUTPUT"
+          fi
+      - id: action
+        uses: .
+        continue-on-error: ${{ steps.env.outputs.runnable != 'true' }}
+        with:
+          before-sbom: ${{ github.workspace }}/tests/fixtures/before.cdx.json
+          after-sbom: ${{ github.workspace }}/tests/fixtures/after.cdx.json
+          output: sarif
+          verify-signatures: 'false'
+          comment-on-pr: 'false'
+          no-epss: 'true'
+          no-kev: 'true'
+          no-registry: 'true'
+      - name: Assert SARIF file written and valid
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          RUNNABLE: ${{ steps.env.outputs.runnable }}
+        run: |
+          echo "outcome: $OUTCOME runnable: $RUNNABLE"
+          f="$GITHUB_WORKSPACE/bomdrift.sarif"
+          if [ "$RUNNABLE" != "true" ]; then
+            # Host glibc is too old for the released binary; the action can
+            # only be checked for having run (not skipped).
+            if [ "$OUTCOME" != "success" ] && [ "$OUTCOME" != "failure" ]; then
+              echo "FAIL: unexpected outcome '$OUTCOME'"
+              exit 1
+            fi
+            if [ -s "$f" ]; then
+              python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert "runs" in d' "$f" || { echo "FAIL: invalid SARIF"; exit 1; }
+            fi
+            echo "PASS: action ran (binary not runnable on this host's glibc)"
+            exit 0
+          fi
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if [ ! -s "$f" ]; then
+            echo "FAIL: $f missing or empty"
+            exit 1
+          fi
+          head -c 2000 "$f"; echo
+          if ! python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert "runs" in d, "no runs key"' "$f"; then
+            echo "FAIL: SARIF is not valid JSON with a runs array"
+            exit 1
+          fi
+          echo "PASS"

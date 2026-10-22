@@ -1,0 +1,26 @@
+name: Test non issue_comment event is skipped
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          verify-signatures: 'false'
+      - name: Assert action succeeded and wrote no baseline
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if [ -e "$GITHUB_WORKSPACE/.bomdrift/baseline.json" ]; then
+            echo "FAIL: baseline file should not have been created"
+            exit 1
+          fi
+          echo "PASS"

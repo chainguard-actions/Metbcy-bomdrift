@@ -1,0 +1,33 @@
+name: Test cosign signature verification (default)
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          before-sbom: ${{ github.workspace }}/tests/fixtures/before.cdx.json
+          after-sbom: ${{ github.workspace }}/tests/fixtures/after.cdx.json
+          output: json
+          comment-on-pr: 'false'
+          findings-only: 'true'
+          no-epss: 'true'
+          no-kev: 'true'
+          no-registry: 'true'
+      - name: Assert action succeeded and cosign installed
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if ! command -v cosign >/dev/null 2>&1; then
+            echo "FAIL: cosign should be installed when verify-signatures=true"
+            exit 1
+          fi
+          echo "PASS"

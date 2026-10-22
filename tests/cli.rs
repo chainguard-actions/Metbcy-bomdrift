@@ -1,0 +1,1355 @@
+//! End-to-end CLI tests that spawn the actual binary via the path Cargo provides
+//! through the `CARGO_BIN_EXE_<name>` env var. These verify the user-visible
+//! behavior of `bomdrift diff <before> <after>` rather than internal API shape.
+
+use std::fs;
+use std::path::PathBuf;
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+fn bin() -> &'static str {
+    env!("CARGO_BIN_EXE_bomdrift")
+}
+
+fn manifest_dir() -> &'static str {
+    env!("CARGO_MANIFEST_DIR")
+}
+
+fn fixture_path(name: &str) -> String {
+    PathBuf::from(manifest_dir())
+        .join("tests/fixtures")
+        .join(name)
+        .display()
+        .to_string()
+}
+
+fn temp_dir(name: &str) -> PathBuf {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after unix epoch")
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!(
+        "bomdrift-cli-{name}-{}-{unique}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&dir).expect("create temp dir");
+    dir
+}
+
+#[test]
+fn diff_axios_fixture_pair_prints_pr_comment_markdown() {
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(
+        out.status.success(),
+        "exit code: {}\nstderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let stdout = String::from_utf8(out.stdout).expect("stdout is utf-8");
+    assert!(stdout.starts_with("## SBOM diff\n"));
+    assert!(stdout.contains("| Added | 1 |"));
+    assert!(stdout.contains("| Removed | 1 |"));
+    assert!(stdout.contains("| Version changed | 1 |"));
+    assert!(stdout.contains("| npm | plain-crypto-js | 4.2.1 |"));
+    assert!(stdout.contains("| npm | axios | 1.14.0 | 1.14.1 |"));
+}
+
+#[test]
+fn diff_explicit_format_cdx_succeeds_on_cdx_input() {
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--format",
+            "cdx",
+            "--no-osv",
+            "--no-maintainer-age",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+    assert!(
+        out.status.success(),
+        "exit code: {}\nstderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn diff_explicit_format_overrides_autodetection() {
+    // Auto-detect on CycloneDX inputs produces the documented diff. Forcing
+    // `--format spdx` against the same files routes them through the SPDX
+    // parser, which finds zero packages in CycloneDX-shaped JSON, yielding
+    // "no changes". A different output proves the hint took effect — i.e.
+    // the flag is no longer dead code.
+    let auto_out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+            "--no-maintainer-age",
+        ])
+        .output()
+        .expect("spawn bomdrift (auto)");
+
+    let forced_out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--format",
+            "spdx",
+            "--no-osv",
+            "--no-maintainer-age",
+        ])
+        .output()
+        .expect("spawn bomdrift (forced spdx)");
+
+    let auto_stdout = String::from_utf8(auto_out.stdout).expect("utf-8");
+    let forced_stdout = String::from_utf8(forced_out.stdout).expect("utf-8");
+
+    assert!(
+        auto_stdout.contains("plain-crypto-js"),
+        "auto-detect should produce the documented diff, got: {auto_stdout}"
+    );
+    assert!(
+        forced_stdout.contains("_No dependency changes._"),
+        "forcing --format spdx on CycloneDX inputs should yield no diff, got: {forced_stdout}"
+    );
+    assert_ne!(
+        auto_stdout, forced_stdout,
+        "--format must change behavior when it overrides auto-detection"
+    );
+}
+
+#[test]
+fn diff_self_against_self_reports_no_changes() {
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-minimal.json",
+            "--no-osv",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).expect("stdout is utf-8");
+    assert!(stdout.contains("_No dependency changes._"));
+}
+
+#[test]
+fn diff_explicit_markdown_flag_is_identical_to_default() {
+    let default_out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    let explicit_out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+            "--output",
+            "markdown",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert_eq!(default_out.stdout, explicit_out.stdout);
+}
+
+#[test]
+fn diff_missing_file_fails_with_useful_error() {
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/does-not-exist.json",
+            "tests/fixtures/cdx-after.json",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("does-not-exist.json"));
+    assert!(
+        stderr.contains("reading SBOM file") || stderr.contains("No such file"),
+        "stderr should mention the failing file or the reason: {stderr}"
+    );
+}
+
+#[test]
+fn diff_json_output_produces_parseable_json() {
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+            "--output",
+            "json",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(
+        out.status.success(),
+        "exit code: {}\nstderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let stdout = String::from_utf8(out.stdout).expect("stdout is utf-8");
+    let v: serde_json::Value =
+        serde_json::from_str(&stdout).expect("--output json must produce parseable JSON");
+
+    assert!(
+        v.get("changes").is_some(),
+        "missing top-level `changes` key"
+    );
+    assert!(
+        v.get("enrichment").is_some(),
+        "missing top-level `enrichment` key"
+    );
+
+    // The axios-incident fixture pair always produces the plain-crypto-js
+    // typosquat finding (pure compute, no network — runs even with --no-osv).
+    let typosquats = v["enrichment"]["typosquats"]
+        .as_array()
+        .expect("enrichment.typosquats must be an array");
+    let names: Vec<&str> = typosquats
+        .iter()
+        .filter_map(|t| t["component"]["name"].as_str())
+        .collect();
+    assert!(
+        names.contains(&"plain-crypto-js"),
+        "expected plain-crypto-js in enrichment.typosquats, got names: {names:?}"
+    );
+}
+
+#[test]
+fn refresh_typosquat_help_advertises_ecosystem_flag() {
+    // The full subcommand makes a network request and writes to disk, so its
+    // happy-path is covered by the in-process `run_with` tests in
+    // `src/refresh.rs::tests` (fake fetcher + tempdir cache root). Here we
+    // just verify the CLI surface — the subcommand exists, takes
+    // `--ecosystem`, and accepts `npm` / `all` — without actually firing
+    // either a real fetch or attempting to scribble in the user's `~/.cache`.
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args(["refresh-typosquat", "--help"])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(
+        out.status.success(),
+        "exit code: {}\nstderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("--ecosystem"),
+        "refresh-typosquat --help must advertise --ecosystem; got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("npm"),
+        "refresh-typosquat --help must list npm as a value; got:\n{stdout}"
+    );
+}
+
+#[test]
+fn diff_sarif_output_produces_valid_sarif_with_typosquat_finding() {
+    // End-to-end SARIF: feed the axios fixture pair, verify the output is
+    // parseable JSON with the v2.1.0 envelope, and that the load-bearing
+    // typosquat finding (`plain-crypto-js` -> `crypto-js`) shows up as a
+    // `bomdrift.typosquat` result. `--no-osv` and `--no-maintainer-age` keep
+    // the test offline and deterministic.
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+            "--no-maintainer-age",
+            "--output",
+            "sarif",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(
+        out.status.success(),
+        "exit code: {}\nstderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let stdout = String::from_utf8(out.stdout).expect("stdout is utf-8");
+    let v: serde_json::Value =
+        serde_json::from_str(&stdout).expect("--output sarif must produce parseable JSON");
+
+    assert_eq!(v["version"], "2.1.0");
+    assert!(
+        v["$schema"]
+            .as_str()
+            .unwrap()
+            .contains("sarif-schema-2.1.0.json")
+    );
+    let driver = &v["runs"][0]["tool"]["driver"];
+    assert_eq!(driver["name"], "bomdrift");
+
+    let results = v["runs"][0]["results"].as_array().expect("results array");
+    let typosquat_purls: Vec<&str> = results
+        .iter()
+        .filter(|r| r["ruleId"] == "bomdrift.typosquat")
+        .filter_map(|r| r["properties"]["purl"].as_str())
+        .collect();
+    assert!(
+        typosquat_purls
+            .iter()
+            .any(|p| p.contains("plain-crypto-js")),
+        "expected a bomdrift.typosquat result for plain-crypto-js, got: {typosquat_purls:?}"
+    );
+}
+
+#[test]
+fn diff_axios_fixture_pair_renders_typosquat_section() {
+    // End-to-end: typosquat enricher always runs (pure compute, no I/O), so
+    // even with `--no-osv` the "Possible typosquats" section appears for the
+    // axios-incident fixture pair.
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).expect("stdout is utf-8");
+    assert!(
+        stdout.contains("### Possible typosquats"),
+        "expected typosquat section, got:\n{stdout}"
+    );
+    assert!(stdout.contains("| Possible typosquats | 1 |"));
+    assert!(stdout.contains("plain-crypto-js"));
+    assert!(stdout.contains("crypto-js"));
+    assert!(
+        !stdout.contains("is a typosquat"),
+        "wording must be 'similar to', never 'is a typosquat'"
+    );
+}
+
+#[test]
+fn diff_fail_on_typosquat_exits_2_but_still_prints_markdown_body() {
+    // The axios fixture pair always produces the plain-crypto-js typosquat
+    // (pure compute, no network). With --fail-on=typosquat we expect:
+    //   1. exit code 2 (the documented "fail-on tripped" code)
+    //   2. the full markdown body still on stdout — the action's tee+rc
+    //      wrapper relies on this so the PR comment posts even on exit-2.
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+            "--no-maintainer-age",
+            "--output",
+            "markdown",
+            "--fail-on",
+            "typosquat",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "fail-on=typosquat with a typosquat finding must exit 2; got status: {} stderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8(out.stdout).expect("stdout is utf-8");
+    assert!(
+        stdout.contains("plain-crypto-js"),
+        "exit-2 path must still emit the markdown body for PR-comment posting; got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("### Possible typosquats"),
+        "exit-2 path must still emit the typosquat section; got:\n{stdout}"
+    );
+}
+
+#[test]
+fn diff_fail_on_cve_with_no_findings_exits_0() {
+    // Self-diff has no findings of any kind. --fail-on=cve must NOT trip.
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-minimal.json",
+            "--no-osv",
+            "--no-maintainer-age",
+            "--fail-on",
+            "cve",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(
+        out.status.success(),
+        "self-diff with --fail-on=cve must exit 0; got status: {} stderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn diff_fail_on_critical_cve_with_no_cve_findings_does_not_warn() {
+    // critical-cve is treated as cve in v0.2 with a documented stderr warning
+    // explaining the limitation. The warning must fire ONLY when the threshold
+    // actually trips — pollutting every invocation that uses `critical-cve`
+    // would be obnoxious.
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+            "--no-maintainer-age",
+            "--fail-on",
+            "critical-cve",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(
+        out.status.success(),
+        "critical-cve with no CVE findings must NOT trip; got status: {} stderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !stderr.contains("critical-cve is treated as"),
+        "v0.2 critical-cve warning must only fire on trip, not on every invocation; stderr:\n{stderr}"
+    );
+}
+
+#[test]
+fn diff_terminal_output_in_non_tty_falls_back_to_markdown() {
+    // When the binary is invoked under `Command::output()`, stdout is captured
+    // (a pipe, not a TTY). The terminal renderer must therefore fall back to
+    // plain markdown so PR-comment workflows that pipe `bomdrift` output stay
+    // safe regardless of the user's chosen format flag.
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+            "--no-maintainer-age",
+            "--output",
+            "terminal",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(
+        out.status.success(),
+        "exit code: {}\nstderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8(out.stdout).expect("stdout is utf-8");
+    assert!(
+        stdout.starts_with("## SBOM diff"),
+        "non-TTY terminal output must fall back to markdown headline; got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("\x1b["),
+        "non-TTY output must contain no ANSI escapes; got:\n{stdout}"
+    );
+}
+
+#[test]
+fn diff_no_maintainer_age_flag_skips_enricher() {
+    // With --no-maintainer-age (and --no-osv to keep the run fully offline),
+    // the diff renders successfully and the "Young maintainers" section is
+    // absent. This guards against accidentally always-running the GitHub-API
+    // enricher in test/CI environments where GITHUB_TOKEN may be unset and
+    // the unauth rate limit (60/hr) is shared with other concurrent jobs.
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+            "--no-maintainer-age",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(
+        out.status.success(),
+        "exit code: {}\nstderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let stdout = String::from_utf8(out.stdout).expect("stdout is utf-8");
+    assert!(
+        !stdout.contains("### Young maintainers"),
+        "young-maintainers section must not render when --no-maintainer-age is set; got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("| Young maintainers |"),
+        "young-maintainers summary row must not appear when the enricher is skipped"
+    );
+}
+
+#[test]
+fn init_config_only_scaffolds_policy_file_without_workflows() {
+    let dir = temp_dir("init-config-only");
+    let out = Command::new(bin())
+        .current_dir(&dir)
+        .args(["init", "--config-only"])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(
+        out.status.success(),
+        "exit code: {}\nstderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let config = fs::read_to_string(dir.join(".bomdrift.toml")).expect("read generated config");
+    assert!(config.contains("[diff]"));
+    assert!(config.contains("fail_on = \"critical-cve\""));
+    assert!(!dir.join(".github/workflows/sbom-diff.yml").exists());
+
+    let rerun = Command::new(bin())
+        .current_dir(&dir)
+        .args(["init", "--config-only"])
+        .output()
+        .expect("spawn bomdrift");
+    assert!(!rerun.status.success());
+    assert!(
+        String::from_utf8_lossy(&rerun.stderr).contains("already exists"),
+        "rerun should explain existing file, stderr:\n{}",
+        String::from_utf8_lossy(&rerun.stderr)
+    );
+
+    fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn diff_missing_explicit_config_fails_usefully() {
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--config",
+            "tests/fixtures/does-not-exist.toml",
+            "--no-osv",
+            "--no-maintainer-age",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("tests/fixtures/does-not-exist.toml"));
+    assert!(stderr.contains("reading bomdrift config"));
+}
+
+#[test]
+fn diff_default_config_can_focus_comment_and_trip_budget() {
+    let dir = temp_dir("config-budget");
+    fs::write(
+        dir.join(".bomdrift.toml"),
+        r#"
+        [diff]
+        no_osv = true
+        no_maintainer_age = true
+        findings_only = true
+        max_added = 0
+        "#,
+    )
+    .expect("write config");
+
+    let out = Command::new(bin())
+        .current_dir(&dir)
+        .args([
+            "diff",
+            &fixture_path("cdx-minimal.json"),
+            &fixture_path("cdx-after.json"),
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "budget gate must exit 2; stderr:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8(out.stdout).expect("stdout is utf-8");
+    assert!(stdout.contains("| Added | 1 |"));
+    assert!(stdout.contains("Raw dependency churn detail elided"));
+    assert!(!stdout.contains("### Added"));
+    assert!(stdout.contains("### Possible typosquats"));
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("--max-added 0"));
+
+    fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn diff_explicit_flag_overrides_config_default() {
+    let dir = temp_dir("config-override");
+    fs::write(
+        dir.join(".bomdrift.toml"),
+        r#"
+        [diff]
+        output = "json"
+        no_osv = true
+        no_maintainer_age = true
+        "#,
+    )
+    .expect("write config");
+
+    let out = Command::new(bin())
+        .current_dir(&dir)
+        .args([
+            "diff",
+            &fixture_path("cdx-minimal.json"),
+            &fixture_path("cdx-after.json"),
+            "--output",
+            "markdown",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(
+        out.status.success(),
+        "exit code: {}\nstderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8(out.stdout).expect("stdout is utf-8");
+    assert!(stdout.starts_with("## SBOM diff"));
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&stdout).is_err(),
+        "explicit --output markdown should override config output=json"
+    );
+
+    fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn diff_fail_on_license_change_exits_2() {
+    let dir = temp_dir("license-change");
+    let before = dir.join("before.json");
+    let after = dir.join("after.json");
+    fs::write(
+        &before,
+        r#"{
+          "bomFormat": "CycloneDX",
+          "specVersion": "1.5",
+          "version": 1,
+          "components": [
+            {
+              "type": "library",
+              "name": "pkg",
+              "version": "1.0.0",
+              "purl": "pkg:npm/pkg@1.0.0",
+              "licenses": [{"license": {"id": "MIT"}}]
+            }
+          ]
+        }"#,
+    )
+    .expect("write before fixture");
+    fs::write(
+        &after,
+        r#"{
+          "bomFormat": "CycloneDX",
+          "specVersion": "1.5",
+          "version": 1,
+          "components": [
+            {
+              "type": "library",
+              "name": "pkg",
+              "version": "1.0.0",
+              "purl": "pkg:npm/pkg@1.0.0",
+              "licenses": [{"license": {"id": "GPL-3.0"}}]
+            }
+          ]
+        }"#,
+    )
+    .expect("write after fixture");
+
+    let out = Command::new(bin())
+        .current_dir(&dir)
+        .args([
+            "diff",
+            before.to_str().expect("utf-8 before path"),
+            after.to_str().expect("utf-8 after path"),
+            "--no-osv",
+            "--no-maintainer-age",
+            "--fail-on",
+            "license-change",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "license-change gate must exit 2; stderr:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8(out.stdout).expect("stdout is utf-8");
+    assert!(stdout.contains("### License changed (same version)"));
+    assert!(stdout.contains("MIT"));
+    assert!(stdout.contains("GPL-3.0"));
+
+    fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn diff_explicit_baseline_path_missing_errors_loudly() {
+    // Regression guard for the v0.6.1 baseline split: CLI `--baseline
+    // <path>` MUST keep its strict typo-detector behavior even after
+    // config-supplied baselines were softened. A user who types
+    // `--baseline pasleline.json` (typo) deserves a hard failure, not a
+    // silent run with no suppressions applied.
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--baseline",
+            "tests/fixtures/does-not-exist-baseline.json",
+            "--no-osv",
+            "--no-maintainer-age",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(
+        !out.status.success(),
+        "explicit --baseline pointing at a missing file must error; got status {}",
+        out.status
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("does-not-exist-baseline.json"),
+        "stderr should name the missing baseline path; got:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("reading baseline file"),
+        "stderr should explain the baseline read failure; got:\n{stderr}"
+    );
+}
+
+#[test]
+fn diff_config_baseline_missing_file_does_not_error() {
+    // End-to-end repro of the v0.6.1 fix: `bomdrift init` writes
+    // `.bomdrift.toml` with `baseline = ".bomdrift/baseline.json"` —
+    // a path that doesn't exist until the first `/bomdrift suppress`
+    // comment populates it. The first PR-comment run on a freshly
+    // init'd repo must succeed and render markdown with no
+    // suppressions applied, NOT fail with "No such file or directory".
+    let dir = temp_dir("config-baseline-missing");
+    fs::write(
+        dir.join(".bomdrift.toml"),
+        r#"
+        [diff]
+        no_osv = true
+        no_maintainer_age = true
+        baseline = ".bomdrift/baseline.json"
+        "#,
+    )
+    .expect("write config");
+
+    let out = Command::new(bin())
+        .current_dir(&dir)
+        .args([
+            "diff",
+            &fixture_path("cdx-minimal.json"),
+            &fixture_path("cdx-after.json"),
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(
+        out.status.success(),
+        "config-supplied missing baseline must not block render; got status {} stderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !stderr.contains("reading baseline file"),
+        "config-tolerant path must not surface the strict-mode error; got:\n{stderr}"
+    );
+    let stdout = String::from_utf8(out.stdout).expect("stdout is utf-8");
+    assert!(stdout.starts_with("## SBOM diff"));
+    assert!(stdout.contains("plain-crypto-js"));
+
+    fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn diff_renders_github_footer_when_only_repo_url_env_var_is_set() {
+    // Regression coverage for issue #10 (todo b5): the unit test in
+    // `render::markdown` covers the rendering function, but the env-var
+    // → `Options.repo_url` plumbing in `lib::run_diff` was previously
+    // exercised only by the GitHub Action E2E. This test pins the CLI
+    // path: pass the URL via env var (not `--repo-url`) and assert the
+    // footer renders the expected GitHub shape.
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .env_remove("GITLAB_CI")
+        .env_remove("CI_PROJECT_URL")
+        .env("BOMDRIFT_REPO_URL", "https://github.com/example/proj")
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(
+        out.status.success(),
+        "exit code: {}\nstderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let stdout = String::from_utf8(out.stdout).expect("stdout is utf-8");
+    assert!(
+        stdout.contains("https://github.com/example/proj/issues/new"),
+        "expected GitHub footer URL from BOMDRIFT_REPO_URL env var; got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("/bomdrift suppress"),
+        "GitHub footer must include the `/bomdrift suppress` hint; got:\n{stdout}"
+    );
+}
+
+#[test]
+fn diff_auto_detects_gitlab_when_gitlab_ci_env_is_true() {
+    // a2 acceptance: `GITLAB_CI=true` flips the rendered footer to the
+    // GitLab shape without requiring `--platform gitlab`. `CI_PROJECT_URL`
+    // doubles as the repo-URL source so users on the GitLab template
+    // don't have to plumb `BOMDRIFT_REPO_URL` themselves.
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .env_remove("BOMDRIFT_REPO_URL")
+        .env("GITLAB_CI", "true")
+        .env("CI_PROJECT_URL", "https://gitlab.com/group/project")
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(
+        out.status.success(),
+        "exit code: {}\nstderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let stdout = String::from_utf8(out.stdout).expect("stdout is utf-8");
+    assert!(
+        stdout.contains("https://gitlab.com/group/project/-/issues/new"),
+        "expected GitLab `/-/issues/new` URL shape; got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("bomdrift baseline add"),
+        "GitLab footer must point at `bomdrift baseline add`; got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("/bomdrift suppress"),
+        "GitLab footer must NOT mention the GitHub-only `/bomdrift suppress` flow; got:\n{stdout}"
+    );
+}
+
+#[test]
+fn diff_explicit_platform_flag_overrides_ci_env_detection() {
+    // Precedence: explicit `--platform github` wins even if `GITLAB_CI=true`
+    // happens to be set in the caller's shell. Same shape guarantee as
+    // the env-var test above, but with the flag forcing GitHub.
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .env("GITLAB_CI", "true")
+        .env_remove("BOMDRIFT_REPO_URL")
+        .env_remove("CI_PROJECT_URL")
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+            "--platform",
+            "github",
+            "--repo-url",
+            "https://github.com/example/proj",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(
+        out.status.success(),
+        "exit code: {}\nstderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let stdout = String::from_utf8(out.stdout).expect("stdout is utf-8");
+    assert!(
+        stdout.contains("https://github.com/example/proj/issues/new"),
+        "expected GitHub footer URL from explicit --platform github + --repo-url; got:\n{stdout}"
+    );
+    assert!(stdout.contains("/bomdrift suppress"));
+    assert!(
+        !stdout.contains("/-/issues/new"),
+        "explicit --platform github must override GITLAB_CI auto-detection; got:\n{stdout}"
+    );
+}
+
+#[test]
+fn diff_debug_calibration_prints_csv_lines_to_stderr() {
+    // b7 acceptance: `--debug-calibration` emits one
+    // `kind|key|score|threshold` line per finding to stderr, leaves
+    // stdout untouched, and exits 0 in the no-fail-on path. The
+    // axios-fixture pair is known to produce 1 typosquat finding (see
+    // `diff_axios_fixture_pair_renders_typosquat_section`); pinning on
+    // that lets us verify the schema without depending on the exact
+    // count of all finding kinds.
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+            "--debug-calibration",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+
+    assert!(
+        out.status.success(),
+        "exit code: {}\nstderr:\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let stderr = String::from_utf8(out.stderr).expect("stderr is utf-8");
+    let typosquat_lines: Vec<&str> = stderr
+        .lines()
+        .filter(|l| l.starts_with("typosquat|"))
+        .collect();
+    assert!(
+        !typosquat_lines.is_empty(),
+        "expected at least one typosquat calibration line; got stderr:\n{stderr}"
+    );
+    // Schema: `kind|key|score|threshold` — exactly 4 pipe-separated fields.
+    for line in &typosquat_lines {
+        let fields: Vec<&str> = line.split('|').collect();
+        assert_eq!(
+            fields.len(),
+            4,
+            "calibration line must have 4 pipe-separated fields; got: {line}"
+        );
+        assert_eq!(fields[0], "typosquat");
+        // score and threshold are floats; both should parse.
+        let score: f64 = fields[2].parse().expect("score is a float");
+        let threshold: f64 = fields[3].parse().expect("threshold is a float");
+        assert!(
+            (0.0..=1.0).contains(&score),
+            "typosquat similarity score must be in [0, 1]; got {score}"
+        );
+        assert!(
+            score >= threshold,
+            "a reported finding must clear its threshold; score={score} threshold={threshold}"
+        );
+    }
+
+    // Stdout must remain pure markdown — calibration is a stderr-only
+    // side channel so it doesn't pollute PR-comment posting pipelines.
+    let stdout = String::from_utf8(out.stdout).expect("stdout is utf-8");
+    assert!(
+        stdout.starts_with("## SBOM diff"),
+        "stdout must remain pure markdown when calibration is enabled; got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("typosquat|"),
+        "calibration output must NOT leak into stdout; got:\n{stdout}"
+    );
+}
+
+#[test]
+fn diff_typosquat_similarity_threshold_rejects_out_of_range() {
+    // clap value_parser must reject < 0.0 / > 1.0 / non-numeric.
+    for bad in &["-0.1", "1.5", "two"] {
+        let out = Command::new(bin())
+            .current_dir(manifest_dir())
+            .args([
+                "diff",
+                "tests/fixtures/cdx-minimal.json",
+                "tests/fixtures/cdx-after.json",
+                "--no-osv",
+                "--typosquat-similarity-threshold",
+                bad,
+            ])
+            .output()
+            .expect("spawn bomdrift");
+        assert!(
+            !out.status.success(),
+            "expected clap to reject --typosquat-similarity-threshold {bad}, but exit was {}",
+            out.status
+        );
+    }
+}
+
+#[test]
+fn diff_young_maintainer_days_rejects_zero_and_negative() {
+    for bad in &["0", "-1", "abc"] {
+        let out = Command::new(bin())
+            .current_dir(manifest_dir())
+            .args([
+                "diff",
+                "tests/fixtures/cdx-minimal.json",
+                "tests/fixtures/cdx-after.json",
+                "--no-osv",
+                "--young-maintainer-days",
+                bad,
+            ])
+            .output()
+            .expect("spawn bomdrift");
+        assert!(
+            !out.status.success(),
+            "expected clap to reject --young-maintainer-days {bad}"
+        );
+    }
+}
+
+#[test]
+fn diff_multi_major_delta_rejects_zero_and_negative() {
+    for bad in &["0", "-1", "abc"] {
+        let out = Command::new(bin())
+            .current_dir(manifest_dir())
+            .args([
+                "diff",
+                "tests/fixtures/cdx-minimal.json",
+                "tests/fixtures/cdx-after.json",
+                "--no-osv",
+                "--multi-major-delta",
+                bad,
+            ])
+            .output()
+            .expect("spawn bomdrift");
+        assert!(
+            !out.status.success(),
+            "expected clap to reject --multi-major-delta {bad}"
+        );
+    }
+}
+
+#[test]
+fn diff_multi_major_delta_accepts_valid_value() {
+    // Smoke test that clap accepts the flag and the diff still runs.
+    // The behavioral assertion for the threshold lives in the lib-level
+    // unit tests; here we just need to verify the wiring doesn't panic.
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+            "--multi-major-delta",
+            "3",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+    assert!(
+        out.status.success(),
+        "diff with --multi-major-delta 3 should succeed; stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn diff_cache_ttl_hours_rejects_zero_and_negative() {
+    for bad in &["0", "-3", "x"] {
+        let out = Command::new(bin())
+            .current_dir(manifest_dir())
+            .args([
+                "diff",
+                "tests/fixtures/cdx-minimal.json",
+                "tests/fixtures/cdx-after.json",
+                "--no-osv",
+                "--cache-ttl-hours",
+                bad,
+            ])
+            .output()
+            .expect("spawn bomdrift");
+        assert!(
+            !out.status.success(),
+            "expected clap to reject --cache-ttl-hours {bad}"
+        );
+    }
+}
+
+#[test]
+fn diff_typosquat_similarity_threshold_changes_calibration_row() {
+    // With a near-1.0 threshold, no typosquat findings surface — so no
+    // typosquat row in calibration output. Compare against the default
+    // run which DOES produce one.
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+            "--debug-calibration",
+            "--typosquat-similarity-threshold",
+            "0.999",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+    assert!(out.status.success());
+    let stderr = String::from_utf8(out.stderr).expect("stderr utf-8");
+    let typosquat_lines: Vec<&str> = stderr
+        .lines()
+        .filter(|l| l.starts_with("typosquat|"))
+        .collect();
+    assert!(
+        typosquat_lines.is_empty(),
+        "raising similarity threshold to 0.999 must drop the existing typosquat finding; got: {stderr}"
+    );
+}
+
+#[test]
+fn diff_typosquat_similarity_threshold_surfaces_in_calibration_threshold_field() {
+    // Pick a low threshold that the existing axios-fixture finding still
+    // clears, and assert the threshold COLUMN reflects the override (not
+    // the unconditional 0.92 default).
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+            "--debug-calibration",
+            "--typosquat-similarity-threshold",
+            "0.5",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+    assert!(out.status.success());
+    let stderr = String::from_utf8(out.stderr).expect("stderr utf-8");
+    let line = stderr
+        .lines()
+        .find(|l| l.starts_with("typosquat|"))
+        .expect("typosquat row");
+    let fields: Vec<&str> = line.split('|').collect();
+    let threshold: f64 = fields[3].parse().expect("threshold is float");
+    assert!(
+        (threshold - 0.5).abs() < 1e-9,
+        "calibration threshold field must reflect the active override; got {threshold}"
+    );
+}
+
+#[test]
+fn diff_before_attestation_conflicts_with_positional_before() {
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--before-attestation",
+            "ghcr.io/example/img:tag",
+            "--cosign-identity",
+            "https://github.com/example/.+",
+            "--cosign-issuer",
+            "https://token.actions.githubusercontent.com",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+    assert!(
+        !out.status.success(),
+        "expected clap to reject --before-attestation alongside positional `before`"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("cannot be used with") || stderr.contains("conflicts"),
+        "expected conflicts-with diagnostic; got: {stderr}"
+    );
+}
+
+#[test]
+fn diff_require_attestation_demands_both_attestation_flags() {
+    let out = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--require-attestation",
+        ])
+        .output()
+        .expect("spawn bomdrift");
+    assert!(
+        !out.status.success(),
+        "expected clap to reject --require-attestation without both attestation flags"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn diff_plugin_end_to_end_emits_finding_in_markdown_and_sarif() {
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = temp_dir("plugin-e2e");
+
+    let script = dir.join("flag.sh");
+    {
+        let mut f = fs::File::create(&script).unwrap();
+        f.write_all(
+            b"#!/bin/sh\ncat > /dev/null\necho '{\"findings\":[{\"kind\":\"banned\",\"message\":\"left-pad is banned\",\"severity\":\"warning\",\"rule_id\":\"banned/left-pad\"}]}'\n"
+        ).unwrap();
+        f.sync_all().unwrap();
+    }
+    let mut perms = fs::metadata(&script).unwrap().permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(&script, perms).unwrap();
+
+    let manifest_path = dir.join("plugin.toml");
+    fs::write(
+        &manifest_path,
+        format!(
+            r#"
+[plugin]
+name = "banned"
+exec = "{}"
+invoke_on = ["added"]
+"#,
+            script.display()
+        ),
+    )
+    .unwrap();
+
+    // Markdown
+    let md = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+            "--output",
+            "markdown",
+            "--plugin",
+            &manifest_path.display().to_string(),
+        ])
+        .output()
+        .expect("spawn bomdrift");
+    assert!(
+        md.status.success(),
+        "exit: {} stderr: {}",
+        md.status,
+        String::from_utf8_lossy(&md.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&md.stdout);
+    assert!(
+        stdout.contains("Plugin findings"),
+        "missing 'Plugin findings' header in:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("banned/left-pad"),
+        "missing rule_id in markdown:\n{stdout}"
+    );
+
+    // SARIF
+    let sarif = Command::new(bin())
+        .current_dir(manifest_dir())
+        .args([
+            "diff",
+            "tests/fixtures/cdx-minimal.json",
+            "tests/fixtures/cdx-after.json",
+            "--no-osv",
+            "--output",
+            "sarif",
+            "--plugin",
+            &manifest_path.display().to_string(),
+        ])
+        .output()
+        .expect("spawn bomdrift");
+    assert!(sarif.status.success());
+    let sarif_str = String::from_utf8_lossy(&sarif.stdout);
+    assert!(
+        sarif_str.contains("\"ruleId\": \"bomdrift.plugin\""),
+        "missing bomdrift.plugin result in SARIF"
+    );
+    assert!(sarif_str.contains("banned/left-pad"));
+
+    fs::remove_dir_all(&dir).ok();
+}
