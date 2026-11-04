@@ -16,39 +16,39 @@ Action **Metbcy--bomdrift/v1** was hardened automatically. 4 finding(s) were ide
 
 ### unpinned-uses (severity: high)
 
-action.yml uses actions by tag rather than by full commit SHA: `uses: actions/checkout@v4` (twice), `uses: anchore/sbom-action/download-syft@v0`, `uses: sigstore/cosign-installer@v3`, `uses: github/codeql-action/upload-sarif@v3`.
+action.yml has composite steps that reference actions by mutable tag instead of a 40-char commit SHA: `uses: actions/checkout@v4` (line 299), `uses: actions/checkout@v4` (line 308), `uses: anchore/sbom-action/download-syft@v0` (line 321), `uses: sigstore/cosign-installer@v3` (line 325), `uses: github/codeql-action/upload-sarif@v3` (line 384).
 
 Locations:
 
-- `action.yml:305`
-- `action.yml:314`
-- `action.yml:326`
-- `action.yml:330`
-- `action.yml:389`
+- `action.yml:299`
+- `action.yml:308`
+- `action.yml:321`
+- `action.yml:325`
+- `action.yml:384`
 
 ### unpinned-uses (severity: high)
 
-comment-suppress/action.yml uses an action by tag rather than by full commit SHA: `uses: sigstore/cosign-installer@v3`.
+comment-suppress/action.yml references an action by mutable tag: `uses: sigstore/cosign-installer@v3` (line 50).
 
 Locations:
 
-- `comment-suppress/action.yml:48`
+- `comment-suppress/action.yml:50`
 
 ### script-injection (severity: high)
 
-Sub-rule (a): an expression is placed directly in a run: block. Offending line: `run: ${{ github.action_path }}/entrypoint.sh`. Fix: use the env var instead, as `run: "$GITHUB_ACTION_PATH/entrypoint.sh"`.
+Sub-rule (a): an expression is put straight into the run: command in the 'Run bomdrift' step: `run: ${{ github.action_path }}/entrypoint.sh`. Use the $GITHUB_ACTION_PATH env var in double quotes instead, e.g. `run: "$GITHUB_ACTION_PATH/entrypoint.sh"`.
 
 Locations:
 
-- `action.yml:334`
+- `action.yml:329`
 
 ### script-injection (severity: high)
 
-Sub-rule (a): an expression is placed directly in a run: block. Offending line: `run: ${{ github.action_path }}/entrypoint.sh`. Fix: use the env var instead, as `run: "$GITHUB_ACTION_PATH/entrypoint.sh"`.
+Sub-rule (a): an expression is put straight into the run: command in the 'Run bomdrift comment-suppress' step: `run: ${{ github.action_path }}/entrypoint.sh`. Use `run: "$GITHUB_ACTION_PATH/entrypoint.sh"` instead.
 
 Locations:
 
-- `comment-suppress/action.yml:51`
+- `comment-suppress/action.yml:53`
 
 ## Iteration Notes
 
@@ -58,5 +58,5 @@ Locations:
 
 **Notes:**
 
-Pinned actions/checkout (x2), anchore/sbom-action/download-syft, sigstore/cosign-installer (both manifests), github/codeql-action/upload-sarif to full SHAs with tag comments. Replaced `run: ${{ github.action_path }}/entrypoint.sh` with `run: '"$GITHUB_ACTION_PATH/entrypoint.sh"'` (shell: bash) in action.yml and comment-suppress/action.yml.
+Pinned actions/checkout@v4 (both uses), anchore/sbom-action/download-syft@v0, sigstore/cosign-installer@v3 and github/codeql-action/upload-sarif@v3 in action.yml, and sigstore/cosign-installer@v3 in comment-suppress/action.yml. Each is now a full commit SHA from lookup_action_sha, with the tag kept as a comment. In both 'Run bomdrift' steps, `run: ${{ github.action_path }}/entrypoint.sh` became `run: "$GITHUB_ACTION_PATH/entrypoint.sh"` (shell: bash). Two edits to action.yml were lost on the first try because I made them in parallel; I redid them one at a time and read the file back to confirm. Nothing was run to test the changes.
 
