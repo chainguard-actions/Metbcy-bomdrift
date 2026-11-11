@@ -335,7 +335,7 @@ runs:
     # would lose those for no real gain.
     - name: Install Syft (for in-action SBOM generation)
       if: inputs.before-sbom == '' || inputs.after-sbom == ''
-      uses: chainguard-actions/anchore-sbom-action/download-syft@f26b93287efafa8b3ffa0ae62eead21c63f58e35 # v0
+      uses: chainguard-actions/anchore-sbom-action/download-syft@270a616dd2791fb4bd6fc472ffe0e6272dfd15ef # v0
 
     - name: Install cosign (for release signature verification)
       if: inputs.verify-signatures == 'true'
