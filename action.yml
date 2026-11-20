@@ -398,7 +398,7 @@ runs:
     # would 422 from the GitHub API.
     - name: Upload SARIF to Code Scanning
       if: inputs.upload-to-code-scanning == 'true' && inputs.output == 'sarif'
-      uses: github/codeql-action/upload-sarif@d2aacf54c2fbc910db8d7ec338fdb54ea48c692d # v3
+      uses: chainguard-actions/github-codeql-action/upload-sarif@19d96758366808db63a55a29771710c7950e17c5 # v3
       with:
         sarif_file: ${{ github.workspace }}/bomdrift.sarif
         category: bomdrift
