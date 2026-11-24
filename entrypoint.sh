@@ -42,8 +42,8 @@ fail() {
 # repo's "latest" release.
 
 resolve_tag() {
-  # Pinned to the upstream release this mirror was built from; the
-  # runner's GITHUB_ACTION_REF names a mirror ref, not an upstream release.
+  # Pinned to the upstream release this mirror was built from (the
+  # runner's GITHUB_ACTION_REF names a mirror ref, not an upstream release).
   local ref="v0.9.9"
   if [[ "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     printf '%s' "$ref"
