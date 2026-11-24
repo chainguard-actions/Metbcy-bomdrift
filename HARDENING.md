@@ -16,7 +16,7 @@ Action **Metbcy--bomdrift/v0.9.9** was hardened automatically. 4 finding(s) were
 
 ### unpinned-uses (severity: high)
 
-action.yml composite steps reference actions by mutable tags rather than full 40-char commit SHAs: `uses: actions/checkout@v4` (twice), `uses: anchore/sbom-action/download-syft@v0`, `uses: sigstore/cosign-installer@v3`, `uses: github/codeql-action/upload-sarif@v3`.
+action.yml composite steps use tag refs instead of full 40-char commit SHAs: 'uses: actions/checkout@v4' (x2), 'uses: anchore/sbom-action/download-syft@v0', 'uses: sigstore/cosign-installer@v3', 'uses: github/codeql-action/upload-sarif@v3'.
 
 Locations:
 
@@ -24,10 +24,11 @@ Locations:
 - `action.yml:308`
 - `action.yml:321`
 - `action.yml:325`
+- `action.yml:384`
 
 ### unpinned-uses (severity: high)
 
-comment-suppress/action.yml composite step references an action by mutable tag: `uses: sigstore/cosign-installer@v3`.
+comment-suppress/action.yml uses a tag ref instead of a commit SHA: 'uses: sigstore/cosign-installer@v3'.
 
 Locations:
 
@@ -35,7 +36,7 @@ Locations:
 
 ### script-injection (severity: high)
 
-Sub-rule (a): a GitHub Actions expression is interpolated directly into a run: block: `run: ${{ github.action_path }}/entrypoint.sh` (step 'Run bomdrift'). Pass it through env (e.g. use "$GITHUB_ACTION_PATH/entrypoint.sh") instead.
+Rule (a): the 'Run bomdrift' step puts a GitHub expression straight into the run: script: 'run: ${{ github.action_path }}/entrypoint.sh'. Use the env var instead: run: "$GITHUB_ACTION_PATH/entrypoint.sh".
 
 Locations:
 
@@ -43,7 +44,7 @@ Locations:
 
 ### script-injection (severity: high)
 
-Sub-rule (a): a GitHub Actions expression is interpolated directly into a run: block: `run: ${{ github.action_path }}/entrypoint.sh` (step 'Run bomdrift comment-suppress'). Use "$GITHUB_ACTION_PATH/entrypoint.sh" instead.
+Rule (a): the 'Run bomdrift comment-suppress' step puts a GitHub expression straight into the run: script: 'run: ${{ github.action_path }}/entrypoint.sh'. Use "$GITHUB_ACTION_PATH/entrypoint.sh" instead.
 
 Locations:
 
@@ -57,5 +58,5 @@ Locations:
 
 **Notes:**
 
-Pinned actions/checkout (x2), anchore/sbom-action/download-syft, sigstore/cosign-installer (both manifests), and github/codeql-action/upload-sarif to full commit SHAs with tag comments. Replaced `run: ${{ github.action_path }}/entrypoint.sh` with a quoted "$GITHUB_ACTION_PATH/entrypoint.sh" (shell: bash) in action.yml and comment-suppress/action.yml.
+Pinned actions/checkout (x2), anchore/sbom-action/download-syft, sigstore/cosign-installer (both manifests) and github/codeql-action/upload-sarif to full commit SHAs, keeping the tag in a comment. Replaced the inline action_path expression in both run: steps with "$GITHUB_ACTION_PATH/entrypoint.sh". entrypoint.sh used GITHUB_ACTION_REF to pick which upstream Metbcy/bomdrift release to download, and on the mirror that ref is a mirror commit, so it would have fallen back to 'latest'. Pinned it to the upstream_ref v0.9.9 instead. comment-suppress/entrypoint.sh already resolves 'latest' as upstream does, so it was left unchanged.
 
